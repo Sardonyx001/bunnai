@@ -2,6 +2,7 @@ import { $ } from "bun";
 import OpenAI from "openai";
 import { readConfigFile } from "./config";
 import simpleGit from "simple-git";
+import ollama from "ollama";
 
 interface RunOptions {
 	verbose?: boolean;
@@ -17,41 +18,6 @@ async function getStagedDiff(target_dir: string) {
 		console.error("Error getting git diff:", error);
 		throw error; // Re-throw the error after logging it
 	}
-}
-
-async function callOllamaChat({
-	endpoint,
-	model,
-	prompt,
-}: {
-	endpoint: string;
-	model: string;
-	prompt: string;
-}) {
-	const url = `${endpoint.replace(/\/$/, "")}/api/chat`;
-	const res = await fetch(url, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			model,
-			messages: [{ role: "user", content: prompt }],
-		}),
-	});
-	if (!res.ok) {
-		throw new Error(`Ollama API error: ${res.status} ${res.statusText}`);
-	}
-	let data;
-	try {
-		data = await res.json();
-	} catch (e) {
-		const text = await res.text();
-		console.error(
-			"Failed to parse Ollama response as JSON. Raw response:",
-			text
-		);
-		throw new Error("Failed to parse JSON");
-	}
-	return data.message?.content || data.choices?.[0]?.message?.content;
 }
 
 export async function run(options: RunOptions, templateName?: string) {
@@ -129,11 +95,11 @@ export async function run(options: RunOptions, templateName?: string) {
 					`Sending request to Ollama at ${endpoint} with model ${model}...`
 				);
 			}
-			const content = await callOllamaChat({
-				endpoint,
+			const response = await ollama.chat({
 				model,
-				prompt: rendered_template,
+				messages: [{ role: "user", content: rendered_template }],
 			});
+			const content = response.message?.content;
 			if (!content) {
 				console.error("Failed to generate commit message from Ollama");
 				process.exit(1);
