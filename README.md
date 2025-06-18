@@ -71,8 +71,30 @@ customCommands:
             labelFormat: "{{ .number }}: {{ .message | green }}"
 ```
 
+## using with Ollama (local LLM)
+
+You can use bunnai with local models via [Ollama](https://ollama.com/):
+
+1. Install and run Ollama (see [Ollama docs](https://ollama.com/)).
+2. Start a model, e.g.:
+
+    ```sh
+    ollama run llama3
+    ```
+
+3. Configure bunnai to use Ollama:
+
+    ```sh
+    bunnai config
+    # Set provider to "ollama"
+    # Set Ollama endpoint (default: http://localhost:11434)
+    # Set Ollama model (e.g. llama3, phi3, etc)
+    ```
+
+4. Use bunnai as usual. Commit messages will be generated using your local Ollama model.
+
 ## acknowledgements
 
 check out these other projects that inspired this one:
 
--   https://github.com/BuilderIO/ai-shell
+- <https://github.com/BuilderIO/ai-shell>

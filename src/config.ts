@@ -16,6 +16,10 @@ async function editFile(filePath: string, onExit: () => void) {
 					value: "vim",
 				},
 				{
+					label: "neovim",
+					value: "nvim",
+				},
+				{
 					label: "nano",
 					value: "nano",
 				},
@@ -54,22 +58,30 @@ async function editFile(filePath: string, onExit: () => void) {
 
 function hasOwn<T extends object, K extends PropertyKey>(
 	obj: T,
-	key: K,
+	key: K
 ): obj is T & Record<K, unknown> {
 	return key in obj && Object.prototype.hasOwnProperty.call(obj, key);
 }
 
 export const configPath = path.join(os.homedir(), ".bunnai");
 
+export type Provider = "openai" | "ollama";
+
 export interface Config {
+	provider: Provider;
 	OPENAI_API_KEY: string;
 	model: string;
+	ollama_endpoint?: string;
+	ollama_model?: string;
 	templates: Record<string, string>;
 }
 
 const DEFAULT_CONFIG: Config = {
+	provider: "openai",
 	OPENAI_API_KEY: "",
 	model: "gpt-4-0125-preview",
+	ollama_endpoint: "http://localhost:11434",
+	ollama_model: "gemma3:4b",
 	templates: {
 		default: path.join(os.homedir(), ".bunnai-template"),
 	},
@@ -112,7 +124,7 @@ export async function cleanUpTemplates(config: Config): Promise<Config> {
 }
 
 export async function setConfigs(
-	keyValues: [key: keyof Config, value: Config[keyof Config]][],
+	keyValues: [key: keyof Config, value: Config[keyof Config]][]
 ) {
 	const config = await readConfigFile();
 
@@ -134,9 +146,14 @@ export async function showConfigUI() {
 			message: "set config",
 			options: [
 				{
+					label: "Provider",
+					value: "provider",
+					hint: config.provider,
+				},
+				{
 					label: "OpenAI API Key",
 					value: "OPENAI_API_KEY",
-					hint: hasOwn<Config, keyof Config>(config, "OPENAI_API_KEY")
+					hint: config.OPENAI_API_KEY
 						? `sk-...${config.OPENAI_API_KEY.slice(-3)}`
 						: "not set",
 				},
@@ -144,6 +161,16 @@ export async function showConfigUI() {
 					label: "Model",
 					value: "model",
 					hint: config.model,
+				},
+				{
+					label: "Ollama Endpoint",
+					value: "ollama_endpoint",
+					hint: config.ollama_endpoint,
+				},
+				{
+					label: "Ollama Model",
+					value: "ollama_model",
+					hint: config.ollama_model,
 				},
 				{
 					label: "Prompt Template",
@@ -158,28 +185,85 @@ export async function showConfigUI() {
 			],
 		})) as keyof Config | "template" | "cancel" | symbol;
 
-		if (p.isCancel(choice)) {
-			return;
+		if (
+			p.isCancel(choice) ||
+			(typeof choice === "string" && choice === "cancel")
+		) {
+			process.exit(0);
 		}
 
-		if (choice === "OPENAI_API_KEY") {
+		if (choice === "provider") {
+			const provider = await p.select({
+				message: "Provider",
+				options: [
+					{ label: "OpenAI", value: "openai" },
+					{ label: "Ollama (local)", value: "ollama" },
+				],
+				initialValue: config.provider,
+			});
+			await setConfigs([["provider", provider as Provider]]);
+		} else if (choice === "OPENAI_API_KEY") {
 			const apiKey = await p.text({
 				message: "OpenAI API Key",
 				initialValue: config.OPENAI_API_KEY,
 			});
-
 			await setConfigs([["OPENAI_API_KEY", apiKey as string]]);
 		} else if (choice === "model") {
-			const model = await p.select({
-				message: "Model",
-				options: (await getModels()).map((model) => ({
-					label: model,
-					value: model,
-				})),
-				initialValue: config.model,
+			if (config.provider === "openai") {
+				const model = await p.select({
+					message: "Model",
+					options: (
+						await getModels()
+					).map((model) => ({
+						label: model,
+						value: model,
+					})),
+					initialValue: config.model,
+				});
+				await setConfigs([["model", model as string]]);
+			} else {
+				await p.select({
+					message: "Choose OpenAI as provider to set model",
+					options: [
+						{
+							label: "Go back",
+							value: "go_back",
+						},
+					],
+				});
+			}
+		} else if (choice === "ollama_endpoint") {
+			const endpoint = await p.text({
+				message: "Ollama Endpoint",
+				initialValue: config.ollama_endpoint,
 			});
-
-			await setConfigs([["model", model as string]]);
+			await setConfigs([["ollama_endpoint", endpoint as string]]);
+		} else if (choice === "ollama_model") {
+			if (config.provider === "ollama") {
+				const model = await p.select({
+					message: "Model",
+					options: (
+						await getOllamaModels(
+							config.ollama_endpoint || "http://localhost:11434"
+						)
+					).map((model) => ({
+						label: model,
+						value: model,
+					})),
+					initialValue: config.ollama_model,
+				});
+				await setConfigs([["ollama_model", model as string]]);
+			} else {
+				await p.select({
+					message: "Choose OpenAI as provider to set model",
+					options: [
+						{
+							label: "Go back",
+							value: "go_back",
+						},
+					],
+				});
+			}
 		} else if (choice === "template") {
 			const templateChoice = (await p.select({
 				message: "Choose a template to edit",
@@ -200,7 +284,7 @@ export async function showConfigUI() {
 
 				const newTemplatePath = path.join(
 					os.homedir(),
-					`.bunnai-template-${newTemplateName}`,
+					`.bunnai-template-${newTemplateName}`
 				);
 
 				await Bun.write(newTemplatePath, template);
@@ -223,8 +307,8 @@ export async function showConfigUI() {
 			}
 		}
 
-		if (p.isCancel(choice)) {
-			return;
+		if (p.isCancel(choice) || typeof choice === "string") {
+			process.exit(0);
 		}
 
 		showConfigUI();
@@ -234,17 +318,43 @@ export async function showConfigUI() {
 	}
 }
 
-async function getModels() {
-	const apiKey = (await readConfigFile()).OPENAI_API_KEY;
+async function getOllamaModels(endpoint: string): Promise<string[]> {
+	try {
+		const response = await fetch(`${endpoint.replace(/\/$/, "")}/api/tags`);
+		if (!response.ok)
+			throw new Error("Failed to fetch models from Ollama endpoint");
+		const data = await response.json();
+		if (Array.isArray(data.models)) {
+			return data.models
+				.map((m: any) => m.name || m.model || "")
+				.filter(Boolean);
+		}
+		if (Array.isArray(data.tags)) {
+			return data.tags
+				.map((t: any) => t.name || t.tag || "")
+				.filter(Boolean);
+		}
+		return [];
+	} catch (e) {
+		console.error("Error fetching Ollama models:", e);
+		return [];
+	}
+}
 
+async function getModels() {
+	const config = await readConfigFile();
+	if (config.provider === "ollama") {
+		const endpoint = config.ollama_endpoint || "http://localhost:11434";
+		const models = await getOllamaModels(endpoint);
+		return models.length > 0
+			? models
+			: [config.ollama_model || "gemma3:4b"];
+	}
+	const apiKey = config.OPENAI_API_KEY;
 	if (!apiKey) {
 		throw new Error("OPENAI_API_KEY is not set");
 	}
-
-	const oai = new OpenAI({
-		apiKey,
-	});
-
+	const oai = new OpenAI({ apiKey });
 	const models = await oai.models.list();
 	return models.data.map((model) => model.id);
 }

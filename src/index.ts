@@ -23,7 +23,9 @@ const config = command(
 			}
 
 			if (!keyValues.length) {
-				console.error(`Error: Missing required parameter "key=value"\n`);
+				console.error(
+					`Error: Missing required parameter "key=value"\n`
+				);
 				argv.showHelp();
 				return process.exit(1);
 			}
@@ -38,7 +40,7 @@ const config = command(
 					keyValues.map((kv: string) => {
 						const [key, value] = kv.split("=");
 						return [key, value] as [keyof Config, string];
-					}),
+					})
 				);
 
 				return;
@@ -47,7 +49,7 @@ const config = command(
 			console.error(`Error: Invalid mode: ${mode}`);
 			process.exit(1);
 		})();
-	},
+	}
 );
 
 export const CLI = cli(
@@ -68,7 +70,7 @@ export const CLI = cli(
 					promise,
 					"reason:",
 					reason,
-					"\nPlease report this! https://github.com/chhoumann/bunnai/issues",
+					"\nPlease report this! https://github.com/chhoumann/bunnai/issues"
 				);
 				process.exit(1);
 			});
@@ -76,7 +78,7 @@ export const CLI = cli(
 			process.on("uncaughtException", (err) => {
 				console.error(
 					"Unhandled exception. Please report this! https://github.com/chhoumann/bunnai/issues",
-					err,
+					err
 				);
 				process.exit(1);
 			});
@@ -92,5 +94,5 @@ export const CLI = cli(
 
 			await run({ verbose }, template);
 		})();
-	},
+	}
 );

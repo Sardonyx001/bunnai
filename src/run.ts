@@ -19,6 +19,41 @@ async function getStagedDiff(target_dir: string) {
 	}
 }
 
+async function callOllamaChat({
+	endpoint,
+	model,
+	prompt,
+}: {
+	endpoint: string;
+	model: string;
+	prompt: string;
+}) {
+	const url = `${endpoint.replace(/\/$/, "")}/api/chat`;
+	const res = await fetch(url, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			model,
+			messages: [{ role: "user", content: prompt }],
+		}),
+	});
+	if (!res.ok) {
+		throw new Error(`Ollama API error: ${res.status} ${res.statusText}`);
+	}
+	let data;
+	try {
+		data = await res.json();
+	} catch (e) {
+		const text = await res.text();
+		console.error(
+			"Failed to parse Ollama response as JSON. Raw response:",
+			text
+		);
+		throw new Error("Failed to parse JSON");
+	}
+	return data.message?.content || data.choices?.[0]?.message?.content;
+}
+
 export async function run(options: RunOptions, templateName?: string) {
 	const config = await readConfigFile();
 	if (options.verbose) {
@@ -27,9 +62,14 @@ export async function run(options: RunOptions, templateName?: string) {
 
 	let templateFilePath: string;
 	if (templateName) {
-		if (!Object.prototype.hasOwnProperty.call(config.templates, templateName)) {
+		if (
+			!Object.prototype.hasOwnProperty.call(
+				config.templates,
+				templateName
+			)
+		) {
 			console.error(
-				`Error: Template '${templateName}' does not exist in the configuration.`,
+				`Error: Template '${templateName}' does not exist in the configuration.`
 			);
 			process.exit(1);
 		}
@@ -47,7 +87,7 @@ export async function run(options: RunOptions, templateName?: string) {
 	const templateFile = Bun.file(templateFilePath);
 	if (!(await templateFile.exists())) {
 		console.error(
-			`Error: The template file '${templateFilePath}' does not exist.`,
+			`Error: The template file '${templateFilePath}' does not exist.`
 		);
 		process.exit(1);
 	}
@@ -65,16 +105,6 @@ export async function run(options: RunOptions, templateName?: string) {
 		console.debug(`Target directory: ${target_dir}`);
 	}
 
-	if (!config.OPENAI_API_KEY) {
-		console.error("OPENAI_API_KEY is not set");
-		process.exit(1);
-	}
-
-	if (!config.model) {
-		console.error("Model is not set");
-		process.exit(1);
-	}
-
 	const diff = await getStagedDiff(target_dir);
 	if (options.verbose) {
 		console.debug("Git diff retrieved:\n", diff);
@@ -88,6 +118,45 @@ export async function run(options: RunOptions, templateName?: string) {
 	const rendered_template = template.replace("{{diff}}", diff);
 	if (options.verbose) {
 		console.debug("Template rendered with git diff.");
+	}
+
+	if (config.provider === "ollama") {
+		const endpoint = config.ollama_endpoint || "http://localhost:11434";
+		const model = config.ollama_model || "llama3";
+		try {
+			if (options.verbose) {
+				console.debug(
+					`Sending request to Ollama at ${endpoint} with model ${model}...`
+				);
+			}
+			const content = await callOllamaChat({
+				endpoint,
+				model,
+				prompt: rendered_template,
+			});
+			if (!content) {
+				console.error("Failed to generate commit message from Ollama");
+				process.exit(1);
+			}
+			console.log(content.trim());
+			if (options.verbose) {
+				console.debug("Commit message generated and outputted.");
+			}
+			return;
+		} catch (error) {
+			console.error(`Failed to fetch from Ollama: ${error}`);
+			process.exit(1);
+		}
+	}
+
+	if (!config.OPENAI_API_KEY) {
+		console.error("OPENAI_API_KEY is not set");
+		process.exit(1);
+	}
+
+	if (!config.model) {
+		console.error("Model is not set");
+		process.exit(1);
 	}
 
 	const oai = new OpenAI({
