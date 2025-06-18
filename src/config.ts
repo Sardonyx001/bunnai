@@ -56,12 +56,12 @@ async function editFile(filePath: string, onExit: () => void) {
 	});
 }
 
-function hasOwn<T extends object, K extends PropertyKey>(
-	obj: T,
-	key: K
-): obj is T & Record<K, unknown> {
-	return key in obj && Object.prototype.hasOwnProperty.call(obj, key);
-}
+// function hasOwn<T extends object, K extends PropertyKey>(
+// 	obj: T,
+// 	key: K
+// ): obj is T & Record<K, unknown> {
+// 	return key in obj && Object.prototype.hasOwnProperty.call(obj, key);
+// }
 
 export const configPath = path.join(os.homedir(), ".bunnai");
 
